@@ -41,12 +41,18 @@ def extract_values_at_freq(file_paths, target_freq_ghz):
     return np.array(gain_values), np.array(phase_values)
 
 
-def compute_cdf(data, bins=18):
-    """Computes the Cumulative Distribution Function (CDF)"""
-    counts, bin_edges = np.histogram(data, bins=bins, density=False)
-    cdf_values = np.cumsum(counts) / sum(counts)
-    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-    return bin_centers, cdf_values
+def compute_cdf(data, num_points=18):
+    """Computes a smooth CDF using Kernel Density Estimation without scipy"""
+    # Step 1: Perform KDE on the data to estimate the PDF
+    x_smooth, pdf_smooth = smooth_kernel_density(data, num_points=num_points)
+
+    # Step 2: Compute the CDF by numerically integrating the PDF
+    cdf_smooth = np.cumsum(pdf_smooth) * (x_smooth[1] - x_smooth[0])  # Approximate integral (Riemann sum)
+
+    # Step 3: Normalize the CDF to be between 0 and 1
+    cdf_smooth /= cdf_smooth[-1]  # Normalize the CDF to the range [0, 1]
+
+    return x_smooth, cdf_smooth
 
 
 def smooth_kernel_density(data, bandwidth=None, num_points=18):
@@ -93,15 +99,15 @@ def plot_pdf_cdf(gain_values, phase_values, target_freq_ghz):
     # Create a subplot layout with 2 rows and 2 columns
     fig = make_subplots(
         rows=2, cols=2,
-        subplot_titles=(f"Gain PDF at {target_freq_ghz} GHz", f"Gain CDF at {target_freq_ghz} GHz",
-                        f"Phase PDF at {target_freq_ghz} GHz", f"Phase CDF at {target_freq_ghz} GHz"),
+        subplot_titles=(f"64 Channels Gain PDF at {target_freq_ghz} GHz", f"64 Channels Gain CDF at {target_freq_ghz} GHz",
+                        f"64 Channels Phase PDF at {target_freq_ghz} GHz", f"64 Channels Phase CDF at {target_freq_ghz} GHz"),
         column_widths=[0.5, 0.5], row_heights=[0.5, 0.5],
         shared_xaxes=False, shared_yaxes=False
     )
 
     # Add Gain PDF (smoothed curve) as line plot
     fig.add_trace(go.Scatter(x=gain_x, y=gain_kde, mode='lines', name=f'Gain PDF - 50%: {gain_50_percent:.2f} dB',
-                             line=dict(color='#1f77b4', width=3)),
+                             line=dict(color='#1f77b4', width=5)),
                   row=1, col=1)
 
     # Add the maximum point for Gain PDF
@@ -112,12 +118,12 @@ def plot_pdf_cdf(gain_values, phase_values, target_freq_ghz):
     # Add Gain CDF plot
     fig.add_trace(
         go.Scatter(x=gain_cdf_x, y=gain_cdf_y, mode='lines', name=f'Gain CDF - 50%: {gain_50_percent:.2f} dB',
-                   line=dict(color='#17becf', width=3)),
+                   line=dict(color='#17becf', width=5)),
         row=1, col=2)
 
     # Add Phase PDF (smoothed curve) as line plot
     fig.add_trace(go.Scatter(x=phase_x, y=phase_kde, mode='lines', name=f'Phase PDF - 50%: {phase_50_percent:.2f}°',
-                             line=dict(color='#ff7f0e', width=3)),
+                             line=dict(color='#ff7f0e', width=5)),
                   row=2, col=1)
 
     # Add the maximum point for Phase PDF
@@ -128,7 +134,7 @@ def plot_pdf_cdf(gain_values, phase_values, target_freq_ghz):
     # Add Phase CDF plot
     fig.add_trace(
         go.Scatter(x=phase_cdf_x, y=phase_cdf_y, mode='lines', name=f'Phase CDF - 50%: {phase_50_percent:.2f}°',
-                   line=dict(color='#d62728', width=3)),
+                   line=dict(color='#d62728', width=5)),
         row=2, col=2)
 
     # Add 50% vertical line for Gain PDF and CDF
@@ -153,7 +159,7 @@ def plot_pdf_cdf(gain_values, phase_values, target_freq_ghz):
 
     # Update layout for all subplots
     fig.update_layout(
-        title=f"PDF and CDF at {target_freq_ghz} GHz",
+        title=f"Tx Mode PDF and CDF at {target_freq_ghz} GHz",
         plot_bgcolor='rgb(243, 243, 243)',
         template='plotly_dark',
         font=dict(family="Arial, sans-serif", size=14, color='white'),
