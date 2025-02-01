@@ -3,7 +3,6 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import os
 
-
 def read_s2p(file_path):
     """Reads S2P file and returns frequencies, Gain (dB), and Phase (Degrees)"""
     frequencies, gain_db, phase_deg = [], [], []
@@ -42,7 +41,7 @@ def extract_values_at_freq(file_paths, target_freq_ghz):
     return np.array(gain_values), np.array(phase_values)
 
 
-def compute_cdf(data, bins=10):
+def compute_cdf(data, bins=18):
     """Computes the Cumulative Distribution Function (CDF)"""
     counts, bin_edges = np.histogram(data, bins=bins, density=False)
     cdf_values = np.cumsum(counts) / sum(counts)
@@ -55,7 +54,6 @@ def smooth_kernel_density(data, bandwidth=None, num_points=18):
     min_data, max_data = min(data), max(data)
     x_values = np.linspace(min_data, max_data, num_points)
     kde_values = np.zeros_like(x_values)
-
 
     if bandwidth is None:
         bandwidth = 1.06 * np.std(data) * len(data) ** (-1 / 5)
@@ -72,10 +70,6 @@ def smooth_kernel_density(data, bandwidth=None, num_points=18):
 def plot_pdf_cdf(gain_values, phase_values, target_freq_ghz):
     """Displays PDF and CDF plots for Gain and Phase"""
 
-    print(gain_values)
-    print(phase_values)
-
-
     # Perform Kernel Density Estimation for Gain and Phase
     gain_x, gain_kde = smooth_kernel_density(gain_values)
     phase_x, phase_kde = smooth_kernel_density(phase_values)
@@ -83,6 +77,18 @@ def plot_pdf_cdf(gain_values, phase_values, target_freq_ghz):
     # Compute CDF for Gain and Phase
     gain_cdf_x, gain_cdf_y = compute_cdf(gain_values)
     phase_cdf_x, phase_cdf_y = compute_cdf(phase_values)
+
+    # Ensure CDF is non-decreasing (monotonic)
+    gain_cdf_y = np.clip(gain_cdf_y, 0, 1)
+    phase_cdf_y = np.clip(phase_cdf_y, 0, 1)
+
+    # Find the 50% point for vertical lines
+    gain_50_percent = np.percentile(gain_values, 50)
+    phase_50_percent = np.percentile(phase_values, 50)
+
+    # Find the maximum KDE points for Gain and Phase
+    gain_max_idx = np.argmax(gain_kde)
+    phase_max_idx = np.argmax(phase_kde)
 
     # Create a subplot layout with 2 rows and 2 columns
     fig = make_subplots(
@@ -94,23 +100,55 @@ def plot_pdf_cdf(gain_values, phase_values, target_freq_ghz):
     )
 
     # Add Gain PDF (smoothed curve) as line plot
-    fig.add_trace(go.Scatter(x=gain_x, y=gain_kde, mode='lines', name='Gain PDF',
+    fig.add_trace(go.Scatter(x=gain_x, y=gain_kde, mode='lines', name=f'Gain PDF - 50%: {gain_50_percent:.2f} dB',
                              line=dict(color='#1f77b4', width=3)),
+                  row=1, col=1)
+
+    # Add the maximum point for Gain PDF
+    fig.add_trace(go.Scatter(x=[gain_x[gain_max_idx]], y=[gain_kde[gain_max_idx]], mode='markers',
+                             name=f'Max Gain Point: {gain_x[gain_max_idx]:.2f} dB', marker=dict(color='red', size=8)),
                   row=1, col=1)
 
     # Add Gain CDF plot
     fig.add_trace(
-        go.Scatter(x=gain_cdf_x, y=gain_cdf_y, mode='lines', name='Gain CDF', line=dict(color='#17becf', width=3)),
+        go.Scatter(x=gain_cdf_x, y=gain_cdf_y, mode='lines', name=f'Gain CDF - 50%: {gain_50_percent:.2f} dB',
+                   line=dict(color='#17becf', width=3)),
         row=1, col=2)
 
     # Add Phase PDF (smoothed curve) as line plot
-    fig.add_trace(go.Scatter(x=phase_x, y=phase_kde, mode='lines', name='Phase PDF',
+    fig.add_trace(go.Scatter(x=phase_x, y=phase_kde, mode='lines', name=f'Phase PDF - 50%: {phase_50_percent:.2f}°',
                              line=dict(color='#ff7f0e', width=3)),
+                  row=2, col=1)
+
+    # Add the maximum point for Phase PDF
+    fig.add_trace(go.Scatter(x=[phase_x[phase_max_idx]], y=[phase_kde[phase_max_idx]], mode='markers',
+                             name=f'Max Phase Point: {phase_x[phase_max_idx]:.2f}°', marker=dict(color='red', size=8)),
                   row=2, col=1)
 
     # Add Phase CDF plot
     fig.add_trace(
-        go.Scatter(x=phase_cdf_x, y=phase_cdf_y, mode='lines', name='Phase CDF', line=dict(color='#d62728', width=3)),
+        go.Scatter(x=phase_cdf_x, y=phase_cdf_y, mode='lines', name=f'Phase CDF - 50%: {phase_50_percent:.2f}°',
+                   line=dict(color='#d62728', width=3)),
+        row=2, col=2)
+
+    # Add 50% vertical line for Gain PDF and CDF
+    fig.add_trace(go.Scatter(x=[gain_50_percent, gain_50_percent], y=[0, max(gain_kde)], mode='lines',
+                             line=dict(dash='dash', color='gray'), name='50% Line'),
+                  row=1, col=1)
+
+    fig.add_trace(
+        go.Scatter(x=[gain_50_percent, gain_50_percent], y=[0, 1], mode='lines', line=dict(dash='dash', color='gray'),
+                   name='50% Line'),
+        row=1, col=2)
+
+    # Add 50% vertical line for Phase PDF and CDF
+    fig.add_trace(go.Scatter(x=[phase_50_percent, phase_50_percent], y=[0, max(phase_kde)], mode='lines',
+                             line=dict(dash='dash', color='gray'), name='50% Line'),
+                  row=2, col=1)
+
+    fig.add_trace(
+        go.Scatter(x=[phase_50_percent, phase_50_percent], y=[0, 1], mode='lines', line=dict(dash='dash', color='gray'),
+                   name='50% Line'),
         row=2, col=2)
 
     # Update layout for all subplots
